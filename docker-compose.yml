@@ -1,74 +1,41 @@
 services:
-  postgres:
-    image: postgres:latest
-    environment:
-      - POSTGRES_PASSWORD=postgres_password
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
 
-  redis:
-    image: redis:latest
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
-  api:
-    build:
-      dockerfile: Dockerfile.dev
-      context: ./server
-    volumes:
-      - /app/node_modules
-      - ./server:/app
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - PGUSER=postgres
-      - PGHOST=postgres
-      - PGDATABASE=postgres
-      - PGPASSWORD=postgres_password
-      - PGPORT=5432
-    depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-
-  worker:
-    build:
-      dockerfile: Dockerfile.dev
-      context: ./worker
-    volumes:
-      - /app/node_modules
-      - ./worker:/app
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-    depends_on:
-      redis:
-        condition: service_healthy
-
-  nginx:
-    restart: always
-    build:
-      dockerfile: Dockerfile.dev
-      context: ./nginx
-    ports:
-      - "3050:80"
-    depends_on:
-      - api
-      - client
-
+  # React ya compilado para producción.
+  # La imagen ya fue construida por GitHub Actions.
   client:
-    build:
-      dockerfile: Dockerfile.dev
-      context: ./client
-    volumes:
-      - /app/node_modules
-      - ./client:/app
+    image: gabomur/multi-client:latest
+    mem_limit: 128m
+
+  # API Express.
+  # Lo llamamos "api" porque nuestro nginx/default.conf
+  # resuelve al backend usando el nombre api.
+  api:
+    image: gabomur/multi-server:latest
+    mem_limit: 128m
     environment:
-      - WDS_SOCKET_PORT=0
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      PGUSER: ${PGUSER}
+      PGHOST: ${PGHOST}
+      PGDATABASE: ${PGDATABASE}
+      PGPASSWORD: ${PGPASSWORD}
+      PGPORT: ${PGPORT}
+
+  # Worker que calcula Fibonacci.
+  # Solo necesita Redis.
+  worker:
+    image: gabomur/multi-worker:latest
+    mem_limit: 128m
+    environment:
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+
+  # Reverse proxy principal.
+  nginx:
+    image: gabomur/multi-nginx:latest
+    mem_limit: 128m
+    ports:
+      - "80:80"
+    depends_on:
+      - client
+      - api

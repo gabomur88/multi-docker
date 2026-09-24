@@ -1,9 +1,19 @@
-name: Multi Docker CI
+name: Multi Docker CI/CD
 
 on:
   push:
     branches:
       - main
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: us-east-2
+  EB_APPLICATION: multi-docker
+  EB_ENVIRONMENT: Multi-docker-env
+  S3_PREFIX: multi-docker
 
 jobs:
   build:
@@ -30,7 +40,7 @@ jobs:
             react-test \
             npm test
 
-      # 4. Login a Docker Hub
+      # 4. Login en Docker Hub
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
@@ -52,3 +62,47 @@ jobs:
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/multi-nginx:latest
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/multi-server:latest
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/multi-worker:latest
+
+      # 7. Autenticarse en AWS mediante OIDC
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # 8. Verificar que GitHub realmente está autenticado en AWS
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
+
+      # 9. Crear el paquete para Elastic Beanstalk
+      - name: Create deployment package
+        run: zip deploy.zip docker-compose.yml
+
+      # 10. Subir el paquete a S3
+      - name: Upload deployment package to S3
+        run: |
+          aws s3 cp deploy.zip \
+            "s3://${{ secrets.EB_S3_BUCKET }}/${S3_PREFIX}/${GITHUB_SHA}.zip"
+
+      # 11. Crear una nueva versión de la aplicación en Elastic Beanstalk
+      - name: Create Elastic Beanstalk application version
+        run: |
+          aws elasticbeanstalk create-application-version \
+            --application-name "$EB_APPLICATION" \
+            --version-label "$GITHUB_SHA" \
+            --source-bundle \
+            S3Bucket="${{ secrets.EB_S3_BUCKET }}",S3Key="${S3_PREFIX}/${GITHUB_SHA}.zip"
+
+      # 12. Desplegar esa versión
+      - name: Deploy to Elastic Beanstalk
+        run: |
+          aws elasticbeanstalk update-environment \
+            --environment-name "$EB_ENVIRONMENT" \
+            --version-label "$GITHUB_SHA"
+
+      # 13. Esperar a que Elastic Beanstalk termine
+      - name: Wait for Elastic Beanstalk
+        run: |
+          aws elasticbeanstalk wait environment-updated \
+            --application-name "$EB_APPLICATION" \
+            --environment-names "$EB_ENVIRONMENT"
