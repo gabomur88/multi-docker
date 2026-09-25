@@ -21,6 +21,7 @@ services:
       PGDATABASE: ${PGDATABASE}
       PGPASSWORD: ${PGPASSWORD}
       PGPORT: ${PGPORT}
+      PGSSL: ${PGSSL}
 
   # Worker que calcula Fibonacci.
   # Solo necesita Redis.
