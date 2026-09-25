@@ -10,6 +10,7 @@ services:
   # Lo llamamos "api" porque nuestro nginx/default.conf
   # resuelve al backend usando el nombre api.
   api:
+    restart: always
     image: gabomur/multi-server:latest
     mem_limit: 128m
     environment:
@@ -24,6 +25,7 @@ services:
   # Worker que calcula Fibonacci.
   # Solo necesita Redis.
   worker:
+    restart: always
     image: gabomur/multi-worker:latest
     mem_limit: 128m
     environment:
@@ -32,6 +34,7 @@ services:
 
   # Reverse proxy principal.
   nginx:
+    restart: always
     image: gabomur/multi-nginx:latest
     mem_limit: 128m
     ports:
